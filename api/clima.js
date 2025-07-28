@@ -1,8 +1,12 @@
 // api/clima.js
-import axios from 'axios';
-import * as cheerio from 'cheerio';
-import https from 'https';
+// import axios from 'axios';
+// import * as cheerio from 'cheerio';
+// import https from 'https';
 
+// usando require:
+const axios = require('axios');
+const cheerio = require('cheerio');
+const https = require('https');
 // --- Reusable Helper Functions (Copied/Adapted) ---
 
 // Helper function to fetch JSON data from a URL (for Aysa)
@@ -147,10 +151,15 @@ function adaptUNLPToAysaFormat(vientoUNLPData, stationName) {
 }
 
 // --- Vercel Function Handler ---
-export default async function handler(req, res) {
+// --- Vercel Function Handler ---
+// export default async function handler(req, res) {
+module.exports = async (req, res) => {
   // --- CORS for Vercel Functions ---
   // IMPORTANT: Configure this properly for production
+  // const allowedOrigins = ['*', 'http://localhost:3000', 'http://localhost:5173', 'https://tu-dominio-frontend.com]; // Add your frontend origins
+  // Corregido:
   const allowedOrigins = ['*', 'http://localhost:3000', 'http://localhost:5173', 'https://tu-dominio-frontend.com']; // Add your frontend origins
+
   const origin = req.headers.origin;
   if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin || '*');
@@ -163,6 +172,10 @@ export default async function handler(req, res) {
       res.status(200).end();
       return;
   }
+  // ... resto del código ...
+
+  
+  
 
   // Only allow GET requests
   if (req.method !== 'GET') {
