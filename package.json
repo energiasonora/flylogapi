@@ -1,20 +1,22 @@
 {
-  "name": "flylogapi",
+  "name": "flylog-api-vercel",
   "version": "1.0.0",
-  "description": "",
-  "main": "apiCombinado.js",
+  "description": "API para obtener datos del clima para DApp",
+  "main": "api/index.js",
   "scripts": {
-    "start": "node apiCombinado.js",
-    "dev": "node apiCombinado.js"
+    "start": "node api/index.js"
   },
-  "keywords": [],
+  "keywords": [
+    "api",
+    "clima",
+    "dapp"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "axios": "^1.9.0",
-    "cheerio": "^1.0.0",
+    "axios": "^1.7.2",
+    "cheerio": "^1.0.0-rc.12",
     "cors": "^2.8.5",
-    "express": "^5.1.0",
-    "puppeteer": "^24.15.0"
+    "express": "^4.19.2"
   }
 }

@@ -1,10 +1,16 @@
+// --- DEPENDENCIAS ---
 const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const https = require('https');
+const cors = require('cors'); // <-- ¡Esta es la línea que faltaba!
 
 const app = express();
-app.use(cors()); // <-- 2. Habilitar CORS para todas las solicitudes
+
+// --- MIDDLEWARE ---
+// Habilitar CORS para todas las solicitudes.
+// Esto debe ir antes de la definición de las rutas.
+app.use(cors()); 
 
 // --- CONSTANTES PARA AYSA ---
 const UUID_BERNAL = 'B8046881-1BC3-43F8-9C9B-841AC482CF85';
@@ -15,6 +21,7 @@ const BASE_API_URL_AYSA = 'https://www.aysa.com.ar/api/estaciones/getVariablesEs
 
 // Helper function to fetch JSON data from a URL
 async function fetchJsonData(url) {
+  // El agente se crea aquí para asegurar que no se reutilice en un entorno serverless
   const agent = new https.Agent({ rejectUnauthorized: false });
   try {
       console.log(`[Aysa] Fetching data from: ${url}`);
@@ -22,7 +29,7 @@ async function fetchJsonData(url) {
           httpsAgent: agent,
           timeout: 15000,
           headers: {
-              'User-Agent': 'Mozilla/5.0 (Scraping Script)'
+              'User-Agent': 'Mozilla/5.0 (Vercel Scraping Script)'
           }
       });
       console.log(`[Aysa] Data fetched successfully from: ${url}`);
@@ -91,7 +98,6 @@ async function fetchDataCheerio(url) {
     const agent = new https.Agent({ rejectUnauthorized: false });
     try {
         console.log(`[UNLP] Fetching data from: ${url}`);
-        // Limpiar URL de espacios
         const cleanUrl = url.trim();
         const { data } = await axios.get(cleanUrl, { httpsAgent: agent, timeout: 10000 });
         const $ = cheerio.load(data);
@@ -124,13 +130,12 @@ function extractVientoUNLP($) {
         const direccion_text = $tabla.find('tr').eq(1).find('td').eq(1).text().trim();
         const racha_maxima_text = $tabla.find('tr').eq(3).find('td').eq(1).text().trim();
 
-        // Extraer solo el número de "XX km/h"
         const velocidad_actual_match = velocidad_actual_text.match(/^(\d+(?:[.,]\d+)?)/);
         const racha_maxima_match = racha_maxima_text.match(/^(\d+(?:[.,]\d+)?)/);
 
         const velocidad_actual = velocidad_actual_match ? parseFloat(velocidad_actual_match[1].replace(',', '.')) : null;
         const racha_maxima = racha_maxima_match ? parseFloat(racha_maxima_match[1].replace(',', '.')) : null;
-        const direccion = direccion_text || null; // Ya es texto
+        const direccion = direccion_text || null;
 
         console.log(`[UNLP] Datos extraídos - Viento Actual: ${velocidad_actual}, Rafaga: ${racha_maxima}, Direccion: ${direccion}`);
 
@@ -149,16 +154,11 @@ function extractVientoUNLP($) {
 
 // Función para adaptar el formato de UNLP al de Aysa
 function adaptUNLPToAysaFormat(vientoUNLPData, stationName) {
-    // Asumimos una fecha/hora genérica o la obtenemos de otra parte si es crítica
-    // Para este ejemplo, usaremos un placeholder o intentaremos extraerla si es posible
-    // La página campo.htm tiene fecha/hora, pero para simplificar asumimos la actual del servidor
     const now = new Date();
-    const fecha_medicion = now.toISOString(); // Formato ISO 8601
+    const fecha_medicion = now.toISOString();
 
-    // Mapear nombres de campos
     return {
         estacion: stationName,
-        // uuid: null, // UNLP no tiene UUID en este contexto
         fecha_medicion: fecha_medicion,
         velocidad_viento: vientoUNLPData.velocidad_actual,
         velocidad_rafaga: vientoUNLPData.racha_maxima,
@@ -168,24 +168,18 @@ function adaptUNLPToAysaFormat(vientoUNLPData, stationName) {
 
 
 // --- RUTA PRINCIPAL COMBINADA ---
-
 app.get('/api/clima/combinado', async (req, res) => {
   try {
     console.log("Solicitando datos combinados de todas las estaciones...");
 
-    // URLs de Aysa
     const urlBernal = `${BASE_API_URL_AYSA}/${UUID_BERNAL}`;
     const urlBerazategui = `${BASE_API_URL_AYSA}/${UUID_BERAZATEGUI}`;
-
-    // URLs de UNLP
-    const campoURL = 'https://meteo.fcaglp.unlp.edu.ar/davis/campo/campo.htm';
     const torreURL = 'https://meteo.fcaglp.unlp.edu.ar/davis/torre/torre.htm';
 
     // Hacer todas las solicitudes en paralelo
-    const [responseBernal, responseBerazategui, responseUNLPCampo, responseUNLPTorre] = await Promise.allSettled([
+    const [responseBernal, responseBerazategui, responseUNLPTorre] = await Promise.allSettled([
       fetchJsonData(urlBernal),
       fetchJsonData(urlBerazategui),
-      fetchDataCheerio(campoURL),
       fetchDataCheerio(torreURL)
     ]);
 
@@ -208,8 +202,7 @@ app.get('/api/clima/combinado', async (req, res) => {
 
     // --- Procesar datos de UNLP ---
     let windDataUNLP = { error: "Datos no disponibles", estacion: 'UNLP' };
-    if (responseUNLPCampo.status === 'fulfilled' && responseUNLPTorre.status === 'fulfilled') {
-        const $campo = responseUNLPCampo.value;
+    if (responseUNLPTorre.status === 'fulfilled') {
         const $torre = responseUNLPTorre.value;
         const vientoUNLPData = extractVientoUNLP($torre);
         if (!vientoUNLPData.error) {
@@ -218,10 +211,9 @@ app.get('/api/clima/combinado', async (req, res) => {
              windDataUNLP = vientoUNLPData; // Devolver el error
         }
     } else {
-        const campoError = responseUNLPCampo.status === 'rejected' ? responseUNLPCampo.reason.message : null;
         const torreError = responseUNLPTorre.status === 'rejected' ? responseUNLPTorre.reason.message : null;
-        console.error(`[UNLP] Error obteniendo datos: Campo: ${campoError}, Torre: ${torreError}`);
-        windDataUNLP = { error: `Error al obtener datos de UNLP: Campo (${campoError}), Torre (${torreError})`, estacion: 'UNLP' };
+        console.error(`[UNLP] Error obteniendo datos: Torre: ${torreError}`);
+        windDataUNLP = { error: `Error al obtener datos de UNLP: Torre (${torreError})`, estacion: 'UNLP' };
     }
 
     // --- Combinar resultados finales ---
@@ -266,13 +258,7 @@ app.get('/api/viento/aysa/berazategui', async (req, res) => {
     return res.status(500).json({ error: 'Error interno del servidor al obtener datos de Berazategui.', estacion: 'Berazategui' });
   }
 });
-// --- FIN RUTAS INDIVIDUALES PARA AYSA ---
 
-// const PORT = process.env.PORT || 3003;
-// app.listen(PORT, () => {
-//   console.log(`API combinada de estaciones meteorológicas corriendo en http://localhost:${PORT}`);
-//   console.log(` - Datos combinados: http://localhost:${PORT}/api/clima/combinado`);
-//   console.log(` - Datos de viento Aysa Bernal: http://localhost:${PORT}/api/viento/aysa/bernal`);
-//   console.log(` - Datos de viento Aysa Berazategui: http://localhost:${PORT}/api/viento/aysa/berazategui`);
-// });
+// --- EXPORTAR LA APP PARA VERCEL ---
+// Vercel se encarga de levantar el servidor, por lo que no necesitamos app.listen()
 module.exports = app;
